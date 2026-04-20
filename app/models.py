@@ -3,8 +3,13 @@ from datetime import UTC, datetime
 from enum import Enum
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlmodel import JSON, Column, Field, Relationship, SQLModel
 
+
+class TicketCreate(BaseModel):
+    customer_email: str
+    content: str
 
 @dataclass
 class EmailMessage:

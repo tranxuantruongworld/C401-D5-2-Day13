@@ -10,6 +10,7 @@ from langfuse import Langfuse, get_client, observe
 from sqlmodel import Session, SQLModel, create_engine, select
 from structlog.contextvars import bind_contextvars
 
+from app import incidents
 from app.agent import run_agent_loop
 from app.logging_config import configure_logging, get_logger
 from app.middleware import CorrelationIdMiddleware
@@ -20,6 +21,7 @@ from app.models import (
     OrderStatus,
     Thread,
     Ticket,
+    TicketCreate,
     TicketStatus,
 )
 from app.pii import hash_user_id, scrub_text
@@ -83,11 +85,12 @@ def get_session():
 @app.post('/tickets', response_model=Ticket)
 @observe()
 def create_ticket(
-    customer_email: str,
-    content: str,
+    payload: TicketCreate,
     background_tasks: BackgroundTasks,
     session: Annotated[Session, Depends(get_session)],
 ):
+    customer_email = payload.customer_email
+    content = payload.content
     ticket = Ticket(
         customer_email=customer_email,
         content=content,
@@ -219,6 +222,25 @@ def get_ticket(
     
     logger.info(event="ticket_retrieved", payload={"ticket_id": str(ticket_id)})
     return ticket
+
+
+@app.post("/incidents/{name}/enable")
+def enable_incident(name: str):
+    incidents.enable(name)
+    logger.info(event="incident_enabled", payload={"incident": name})
+    return {"status": "enabled", "incident": name}
+
+
+@app.post("/incidents/{name}/disable")
+def disable_incident(name: str):
+    incidents.disable(name)
+    logger.info(event="incident_disabled", payload={"incident": name})
+    return {"status": "disabled", "incident": name}
+
+
+@app.get("/incidents")
+def get_incidents():
+    return incidents.status()
 
 
 if __name__ == '__main__':

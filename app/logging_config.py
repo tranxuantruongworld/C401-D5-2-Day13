@@ -36,11 +36,8 @@ class JsonlFileProcessor:
 
 
 def scrub_event(_: Any, __: str, event_dict: EventDict) -> EventDict:
-    payload = event_dict.get("payload")
-    if isinstance(payload, dict):
-        event_dict["payload"] = {
-            k: scrub_text(v) if isinstance(v, str) else v for k, v in payload.items()
-        }
+    if "payload" in event_dict:
+        event_dict["payload"] = scrub_text(event_dict["payload"])
     if "event" in event_dict and isinstance(event_dict["event"], str):
         event_dict["event"] = scrub_text(event_dict["event"])
     return event_dict

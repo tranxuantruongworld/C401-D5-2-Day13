@@ -43,8 +43,12 @@ logger = get_logger()
 
 @observe(as_type='tool', name='get_order_details')
 def get_order_details(order_id: str, session: Session) -> Order | None:
-    bind_contextvars(feature="tool_get_order_details")
-    logger.info(event="tool_get_order_details", tool_name="get_order_details", payload={"order_id": order_id})
+    bind_contextvars(feature='tool_get_order_details')
+    logger.info(
+        event='tool_get_order_details',
+        tool_name='get_order_details',
+        payload={'order_id': order_id},
+    )
     return session.get(Order, order_id)
 
 
@@ -55,19 +59,37 @@ def process_refund(
     reason: str,
     session: Session,
 ) -> RefundProcessSuccess | RefundProcessError:
-    bind_contextvars(feature="tool_process_refund")
-    logger.info(event="tool_process_refund", tool_name="process_refund", payload={"order_id": order_id, "amount": amount, "reason": reason})
+    bind_contextvars(feature='tool_process_refund')
+    logger.info(
+        event='tool_process_refund',
+        tool_name='process_refund',
+        payload={'order_id': order_id, 'amount': amount, 'reason': reason},
+    )
     order = session.get(Order, order_id)
 
     if not order:
-        logger.error(event="tool_process_refund_failed", tool_name="process_refund", error_type="not_found", payload={"order_id": order_id})
+        logger.error(
+            event='tool_process_refund_failed',
+            tool_name='process_refund',
+            error_type='not_found',
+            payload={'order_id': order_id},
+        )
         return RefundProcessError(
             order_id=order_id,
             reason=f'Error: Order {order_id} not found.',
         )
 
     if amount > order.total_amount:
-        logger.error(event="tool_process_refund_failed", tool_name="process_refund", error_type="validation_error", payload={"order_id": order_id, "amount": amount, "total": order.total_amount})
+        logger.error(
+            event='tool_process_refund_failed',
+            tool_name='process_refund',
+            error_type='validation_error',
+            payload={
+                'order_id': order_id,
+                'amount': amount,
+                'total': order.total_amount,
+            },
+        )
         return RefundProcessError(
             order_id=order_id,
             reason=f'Error: Refund amount {amount} exceeds order total {order.total_amount}.',
@@ -76,7 +98,11 @@ def process_refund(
     order.status = OrderStatus.REFUNDED
     session.add(order)
     session.commit()
-    logger.info(event="tool_process_refund_success", tool_name="process_refund", payload={"order_id": order_id, "amount": amount})
+    logger.info(
+        event='tool_process_refund_success',
+        tool_name='process_refund',
+        payload={'order_id': order_id, 'amount': amount},
+    )
     return RefundProcessSuccess(order_id=order_id, amount=amount, reason=reason)
 
 
@@ -274,16 +300,19 @@ async def determine_next_step(input_: str) -> Intent:
     next_step = await b.DetermineNextStep(input_, baml_options={'collector': collector})
     if not collector.last:
         return next_step
-    
+
     last_call = collector.last.calls[-1]
     usage = collector.last.usage
-    
+
     logger.info(
-        event="agent_decision",
+        event='agent_decision',
         model=last_call.client_name,
         tokens_in=usage.input_tokens or 0,
         tokens_out=usage.output_tokens or 0,
-        payload={"intent": next_step.__class__.__name__, "intent_data": next_step.model_dump()},
+        payload={
+            'intent': next_step.__class__.__name__,
+            'intent_data': next_step.model_dump(),
+        },
     )
 
     langfuse.update_current_generation(
@@ -303,21 +332,25 @@ async def determine_next_step(input_: str) -> Intent:
 async def run_agent_loop(ticket_id: UUID, engine: Engine) -> None:
     # Bind correlation_id for background task logging
     bind_contextvars(correlation_id=str(ticket_id))
-    
+
     with Session(engine) as session:
         ticket = session.get(Ticket, ticket_id)
         if not ticket:
-            logger.error(event="agent_loop_failed", error_type="not_found", payload={"ticket_id": str(ticket_id)})
+            logger.error(
+                event='agent_loop_failed',
+                error_type='not_found',
+                payload={'ticket_id': str(ticket_id)},
+            )
             return
 
         # Bind enrichment fields
         bind_contextvars(
             user_id_hash=hash_user_id(ticket.customer_email),
             session_id=str(ticket.id),
-            feature="agent_loop"
+            feature='agent_loop',
         )
-        
-        logger.info(event="agent_loop_started", payload={"ticket_id": str(ticket_id)})
+
+        logger.info(event='agent_loop_started', payload={'ticket_id': str(ticket_id)})
 
         # Simple limit to prevent infinite loops
         max_steps = 10
@@ -326,7 +359,10 @@ async def run_agent_loop(ticket_id: UUID, engine: Engine) -> None:
             user_id=ticket.customer_email,
         ):
             for i in range(max_steps):
-                logger.info(event="agent_loop_step", payload={"step": i, "ticket_id": str(ticket_id)})
+                logger.info(
+                    event='agent_loop_step',
+                    payload={'step': i, 'ticket_id': str(ticket_id)},
+                )
                 thread_prompt = thread_to_prompt(ticket.thread)
 
                 next_step = await determine_next_step(thread_prompt)
@@ -336,7 +372,12 @@ async def run_agent_loop(ticket_id: UUID, engine: Engine) -> None:
                 session.commit()
 
                 if not should_continue:
-                    logger.info(event="agent_loop_finished", payload={"ticket_id": str(ticket_id), "status": ticket.status})
+                    logger.info(
+                        event='agent_loop_finished',
+                        payload={'ticket_id': str(ticket_id), 'status': ticket.status},
+                    )
                     break
             else:
-                logger.warning(event="agent_loop_max_steps", payload={"ticket_id": str(ticket_id)})
+                logger.warning(
+                    event='agent_loop_max_steps', payload={'ticket_id': str(ticket_id)}
+                )

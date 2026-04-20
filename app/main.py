@@ -11,7 +11,9 @@ from structlog.contextvars import bind_contextvars
 from .agent import LabAgent
 from .incidents import disable, enable, status
 from .logging_config import configure_logging, get_logger
-from .metrics import record_error, snapshot
+# Added by Member F (Công)
+from .metrics import record_error, snapshot, record_request
+from .alerts import check_alerts
 from .middleware import CorrelationIdMiddleware
 from .pii import hash_user_id, summarize_text
 from .schemas import ChatRequest, ChatResponse
@@ -76,6 +78,22 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
             cost_usd=result.cost_usd,
             payload={"answer_preview": summarize_text(result.answer)},
         )
+        
+        # Added by Member F (Công)
+        record_request(
+            latency_ms=result.latency_ms,
+            cost_usd=result.cost_usd,
+            tokens_in=result.tokens_in,
+            tokens_out=result.tokens_out,
+            quality_score=result.quality_score
+        )
+        
+        # Added by Member F (Công) - Quick SLO/Alert Check
+        if result.latency_ms > 3000:
+            log.warning("slo_breach_latency", threshold=3000, actual=result.latency_ms)
+        # Added by Member F (Công) - Automated Alert Check
+        check_alerts()
+        
         return ChatResponse(
             answer=result.answer,
             correlation_id=request.state.correlation_id,
